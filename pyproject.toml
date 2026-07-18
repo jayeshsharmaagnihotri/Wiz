@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-wiz"
+version = "0.1.0"
+description = "🪄 Wiz: Modern Python Package Wizard"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "questionary>=2.1.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+wiz = "wiz.cli:main"

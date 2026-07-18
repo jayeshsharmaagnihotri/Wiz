@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: python-wiz
+Version: 0.1.0
+Summary: 🪄 Wiz: Modern Python Package Wizard
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: questionary>=2.1.0
+Requires-Dist: rich>=13.0.0
