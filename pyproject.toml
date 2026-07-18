@@ -6,7 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "wiz"
 version = "0.1.0"
 dependencies = [
-    "questionary"
+    "questionary",
+    "rich"
 ]
 
 [tool.setuptools]
