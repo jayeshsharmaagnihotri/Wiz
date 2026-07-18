@@ -5,7 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wiz"
 version = "0.1.0"
-dependencies = []
+dependencies = [
+    "questionary"
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
