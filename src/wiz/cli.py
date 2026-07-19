@@ -21,11 +21,9 @@ def save_history(script_path, flags):
     try:
         entry = f"{script_path} {flags}".strip() if flags else script_path
         history = load_history()
-        # Remove duplicate if it exists to bring it to the top
         if entry in history:
             history.remove(entry)
         history.insert(0, entry)
-        # Keep it capped at max limit
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             for item in history[:MAX_HISTORY]:
                 f.write(f"{item}\n")
@@ -40,8 +38,10 @@ def run_uv(args, is_script=False):
             script_flags = args[2:]
             
             if "__main__.py" in target_script or "cli.py" in target_script:
-                console.print("[bold yellow]\nRestarting Wiz interface session...[/bold yellow]\n")
-                os.execv(sys.executable, [sys.executable, "-m", "wiz.cli"])
+                console.print("[bold yellow]\nRefreshing Wiz interface session...[/bold yellow]\n")
+                # Clear screen cleanly and return a specific indicator instead of pulling the process out from under the shell
+                os.system('cls' if os.name == 'nt' else 'clear')
+                return "RESTART"
             else:
                 cmd = [sys.executable, target_script] + script_flags
 
@@ -90,8 +90,8 @@ def browse_for_file():
             return os.path.relpath(os.path.join(current_dir, selected))
 
 def main():
-    console.print("\n[bold magenta]* WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "-" * 40)
     while True:
+        console.print("\n[bold magenta]* WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "-" * 40)
         choice = questionary.select(
             "Select action:",
             choices=[
@@ -116,7 +116,7 @@ def main():
             if path.strip(): args.append(path.strip())
             if ver.strip(): args.extend(["--python", ver.strip()])
             
-            if run_uv(args):
+            if run_uv(args) == True:
                 target_env = path.strip() if path.strip() else ".venv"
                 console.print(f"\n[bold cyan]💡 To activate this environment in PowerShell run:[/bold cyan]")
                 console.print(f"[yellow].\\{target_env}\\Scripts\\activate[/yellow]")
@@ -135,14 +135,16 @@ def main():
                 flags = questionary.text("Append command flags (optional, e.g. --debug -v):").ask()
                 flags = flags.strip() if flags else ""
                 
-                # Save entry to history tracking
                 save_history(scr, flags)
                 
                 console.print(f"[green]Executing selected file: {scr} {flags}[/green]")
                 args = ["run", scr]
                 if flags:
                     args.extend(flags.split())
-                run_uv(args, is_script=True)
+                
+                status = run_uv(args, is_script=True)
+                if status == "RESTART":
+                    continue
                 
         elif "5." in choice:
             history = load_history()
@@ -160,14 +162,16 @@ def main():
                 scr = parts[0]
                 flags = " ".join(parts[1:]) if len(parts) > 1 else ""
                 
-                # Re-save to push it back to the top of the history stack
                 save_history(scr, flags)
                 
                 console.print(f"[green]Re-executing from history: {scr} {flags}[/green]")
                 args = ["run", scr]
                 if flags:
                     args.extend(flags.split())
-                run_uv(args, is_script=True)
+                
+                status = run_uv(args, is_script=True)
+                if status == "RESTART":
+                    continue
 
         elif "6." in choice:
             run_uv(["python", "list"])
