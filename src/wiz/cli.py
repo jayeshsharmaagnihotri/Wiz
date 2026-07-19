@@ -22,7 +22,6 @@ def run_uv(args):
         return False
 
 def browse_for_file():
-    """Terminal file navigator that lets users select a Python file from the current directory."""
     current_dir = os.getcwd()
     while True:
         try:
@@ -31,7 +30,6 @@ def browse_for_file():
             console.print(f"[red]Error reading directory: {e}[/red]")
             return None
 
-        # Filter to directories and .py files for cleaner navigation
         choices = [".. (Up One Directory)"]
         dirs = [f for f in items if os.path.isdir(os.path.join(current_dir, f)) and not f.startswith(".")]
         pys = [f for f in items if f.endswith(".py")]
@@ -55,7 +53,7 @@ def browse_for_file():
             return os.path.relpath(os.path.join(current_dir, selected))
 
 def main():
-    console.print("\n[bold magenta]◆ WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "─" * 40)
+    console.print("\n[bold magenta]* WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "-" * 40)
     while True:
         choice = questionary.select(
             "Select action:",
@@ -81,7 +79,6 @@ def main():
             if ver.strip(): args.extend(["--python", ver.strip()])
             
             if run_uv(args):
-                # Print explicit shell instructions to easily activate the environment
                 target_env = path.strip() if path.strip() else ".venv"
                 console.print(f"\n[bold cyan]💡 To activate this environment in PowerShell run:[/bold cyan]")
                 console.print(f"[yellow].\\{target_env}\\Scripts\\activate[/yellow]")
@@ -103,7 +100,7 @@ def main():
         elif "5." in choice:
             run_uv(["python", "list"])
             
-        console.print("─" * 40)
+        console.print("-" * 40)
 
 if __name__ == "__main__":
     main()
