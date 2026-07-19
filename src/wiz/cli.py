@@ -3,6 +3,7 @@ import sys
 import subprocess
 import questionary
 from rich.console import Console
+from rich.table import Table
 
 console = Console()
 HISTORY_FILE = ".wiz_history"
@@ -30,35 +31,33 @@ def save_history(script_path, flags):
     except Exception as e:
         console.print(f"[red]Warning: Could not save run history: {e}[/red]")
 
-def run_uv(args, is_script=False):
+def run_cmd(cmd, use_status=True, status_msg="Running...", is_script=False):
+    """Unified runner supporting both raw pip and uv commands cleanly"""
     try:
-        cmd = ["uv"] + args
-        if is_script and len(args) >= 2 and args[0] == "run" and args[1].endswith(".py"):
-            target_script = args[1]
-            script_flags = args[2:]
-            
+        if is_script and len(cmd) >= 3 and cmd[0] == "uv" and cmd[1] == "run" and cmd[2].endswith(".py"):
+            target_script = cmd[2]
+            script_flags = cmd[3:]
             if "__main__.py" in target_script or "cli.py" in target_script:
                 console.print("[bold yellow]\nRefreshing Wiz interface session...[/bold yellow]\n")
-                # Clear screen cleanly and return a specific indicator instead of pulling the process out from under the shell
                 os.system('cls' if os.name == 'nt' else 'clear')
                 return "RESTART"
             else:
                 cmd = [sys.executable, target_script] + script_flags
 
-        if is_script:
+        if not use_status:
             subprocess.run(cmd, check=True)
         else:
-            with console.status(f"[bold yellow]Wiz running: {' '.join(cmd)}...[/bold yellow]"):
+            with console.status(f"[bold yellow]{status_msg} ({' '.join(cmd)})...[/bold yellow]"):
                 subprocess.run(cmd, check=True)
         return True
     except FileNotFoundError:
-        console.print("\n[bold red]✗ Error: Process execution failed. Component not found.[/bold red]")
+        console.print(f"\n[bold red]Error: Component '{cmd[0]}' not found in system PATH.[/bold red]")
         return False
     except subprocess.CalledProcessError as e:
-        console.print(f"\n[bold red]✗ Failed ({e.returncode})[/bold red]")
+        console.print(f"\n[bold red]Process returned failure code ({e.returncode})[/bold red]")
         return False
 
-def browse_for_file():
+def browse_for_file(extension=".py", prompt_text="Select a file:"):
     current_dir = os.getcwd()
     while True:
         try:
@@ -69,14 +68,14 @@ def browse_for_file():
 
         choices = [".. (Up One Directory)"]
         dirs = [f for f in items if os.path.isdir(os.path.join(current_dir, f)) and not f.startswith(".")]
-        pys = [f for f in items if f.endswith(".py")]
+        files = [f for f in items if f.endswith(extension)]
         
         choices.extend([f"[Dir] {d}" for d in sorted(dirs)])
-        choices.extend(sorted(pys))
+        choices.extend(sorted(files))
         choices.append("[Cancel Selection]")
 
         selected = questionary.select(
-            f"Current Dir: {current_dir}\nSelect a file to run:",
+            f"Current Dir: {current_dir}\n{prompt_text}",
             choices=choices
         ).ask()
 
@@ -91,16 +90,17 @@ def browse_for_file():
 
 def main():
     while True:
-        console.print("\n[bold magenta]* WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "-" * 40)
+        console.print("\n[bold magenta]* WIZ: UNIFIED ENVIRONMENT ENGINE (UV & PIP)[/bold magenta]\n" + "-" * 55)
         choice = questionary.select(
-            "Select action:",
+            "Select action category:",
             choices=[
-                "1. Initialize Virtual Env (uv venv)",
-                "2. Install Package (uv pip install)",
-                "3. Install Python Version (uv python install)",
-                "4. Run Script via Navigator (uv run)",
-                "5. Re-run Recent Script (History)",
-                "6. List Python Versions (uv python list)",
+                "[UV] Initialize Virtual Env (uv venv)",
+                "[UV] Run Script via Navigator (uv run)",
+                "[UV] Re-run Recent Script (History)",
+                "[PIP] Install Package (uv pip install / pip)",
+                "[PIP] Install from requirements.txt",
+                "[PIP] Freeze Environment Requirements",
+                "[System] List Python Versions (uv python list)",
                 "Exit"
             ]
         ).ask()
@@ -108,45 +108,33 @@ def main():
         if choice == "Exit" or choice is None:
             break
             
-        elif "1." in choice:
-            path = questionary.text("Target directory path (Press enter for default '.venv'):").ask()
+        elif "Initialize Virtual Env" in choice:
+            path = questionary.text("Target env directory path (Press enter for '.venv'):").ask()
             ver = questionary.text("Python version (optional, e.g. 3.12):").ask()
+            cmd = ["uv", "venv"]
+            if path.strip(): cmd.append(path.strip())
+            if ver.strip(): cmd.extend(["--python", ver.strip()])
             
-            args = ["venv"]
-            if path.strip(): args.append(path.strip())
-            if ver.strip(): args.extend(["--python", ver.strip()])
-            
-            if run_uv(args) == True:
+            if run_cmd(cmd, status_msg="Configuring virtual environment") == True:
                 target_env = path.strip() if path.strip() else ".venv"
-                console.print(f"\n[bold cyan]💡 To activate this environment in PowerShell run:[/bold cyan]")
+                console.print(f"\n[bold cyan]Environment ready! To activate in PowerShell run:[/bold cyan]")
                 console.print(f"[yellow].\\{target_env}\\Scripts\\activate[/yellow]")
 
-        elif "2." in choice:
-            pkg = questionary.text("Package name:").ask()
-            if pkg: run_uv(["pip", "install"] + pkg.split())
-            
-        elif "3." in choice:
-            ver = questionary.text("Python version (e.g. 3.12):").ask()
-            if ver: run_uv(["python", "install", ver])
-            
-        elif "4." in choice:
-            scr = browse_for_file()
+        elif "Run Script via Navigator" in choice:
+            scr = browse_for_file(extension=".py", prompt_text="Select a python script to run:")
             if scr:
-                flags = questionary.text("Append command flags (optional, e.g. --debug -v):").ask()
+                flags = questionary.text("Append command flags (optional, e.g. --debug):").ask()
                 flags = flags.strip() if flags else ""
-                
                 save_history(scr, flags)
                 
-                console.print(f"[green]Executing selected file: {scr} {flags}[/green]")
-                args = ["run", scr]
-                if flags:
-                    args.extend(flags.split())
+                console.print(f"[green]Executing script: {scr} {flags}[/green]")
+                cmd = ["uv", "run", scr]
+                if flags: cmd.extend(flags.split())
                 
-                status = run_uv(args, is_script=True)
-                if status == "RESTART":
+                if run_cmd(cmd, use_status=False, is_script=True) == "RESTART":
                     continue
                 
-        elif "5." in choice:
+        elif "Re-run Recent Script" in choice:
             history = load_history()
             if not history:
                 console.print("[yellow]No recent script execution history found.[/yellow]")
@@ -161,22 +149,65 @@ def main():
                 parts = selected_history.split(" ")
                 scr = parts[0]
                 flags = " ".join(parts[1:]) if len(parts) > 1 else ""
-                
                 save_history(scr, flags)
                 
-                console.print(f"[green]Re-executing from history: {scr} {flags}[/green]")
-                args = ["run", scr]
-                if flags:
-                    args.extend(flags.split())
+                console.print(f"[green]Re-executing: {scr} {flags}[/green]")
+                cmd = ["uv", "run", scr]
+                if flags: cmd.extend(flags.split())
                 
-                status = run_uv(args, is_script=True)
-                if status == "RESTART":
+                if run_cmd(cmd, use_status=False, is_script=True) == "RESTART":
                     continue
 
-        elif "6." in choice:
-            run_uv(["python", "list"])
+        elif "Install Package" in choice:
+            pkg = questionary.text("Enter package name(s) to install:").ask()
+            if pkg:
+                engine = questionary.select(
+                    "Choose engine tool:",
+                    choices=["1. Fast Mode (uv pip install)", "2. Standard Mode (pip install)"]
+                ).ask()
+                
+                base_cmd = ["uv", "pip", "install"] if "Fast Mode" in engine else ["pip", "install"]
+                run_cmd(base_cmd + pkg.split(), status_msg=f"Installing {pkg}")
             
-        console.print("-" * 40)
+        elif "Install from requirements.txt" in choice:
+            req_file = browse_for_file(extension=".txt", prompt_text="Select your requirements file:")
+            if req_file:
+                engine = questionary.select(
+                    "Choose engine tool:",
+                    choices=["1. Fast Mode (uv pip install -r)", "2. Standard Mode (pip install -r)"]
+                ).ask()
+                
+                base_cmd = ["uv", "pip", "install", "-r", req_file] if "Fast Mode" in engine else ["pip", "install", "-r", req_file]
+                run_cmd(base_cmd, status_msg="Processing dependencies")
+
+        elif "Freeze Environment Requirements" in choice:
+            engine = questionary.select(
+                "Choose freeze format:",
+                choices=["1. Fast Compile (uv pip compile)", "2. Classic Freeze (pip freeze)"]
+            ).ask()
+            
+            output_file = questionary.text("Output file name (Press enter for 'requirements.txt'):").ask()
+            output_file = output_file.strip() if output_file.strip() else "requirements.txt"
+            
+            if "Fast Compile" in engine:
+                cmd = ["uv", "pip", "compile", "pyproject.toml", "-o", output_file] if os.path.exists("pyproject.toml") else ["uv", "pip", "freeze"]
+            else:
+                cmd = ["pip", "freeze"]
+                
+            try:
+                with console.status("[bold yellow]Compiling environment state...[/bold yellow]"):
+                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(result.stdout)
+                console.print(f"[bold green]Successfully generated locks inside: {output_file}[/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]Failed to export freeze schema: {e}[/bold red]")
+
+        elif "List Python Versions" in choice:
+            run_cmd(["uv", "python", "list"], status_msg="Gathering engine runtimes")
+            
+        console.print("-" * 55)
 
 if __name__ == "__main__":
     main()
