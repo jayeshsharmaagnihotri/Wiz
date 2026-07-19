@@ -1,3 +1,4 @@
+import os
 import subprocess
 import questionary
 from rich.console import Console
@@ -12,13 +13,49 @@ def run_uv(args):
         console.print("\n[bold green]✓ Success[/bold green]")
         if result.stdout:
             console.print(result.stdout.strip())
+        return True
     except FileNotFoundError:
         console.print("\n[bold red]✗ Error: 'uv' not found in PATH.[/bold red]")
+        return False
     except subprocess.CalledProcessError as e:
         console.print(f"\n[bold red]✗ Failed ({e.returncode})[/bold red]\n[red]{e.stderr.strip()}[/red]")
+        return False
+
+def browse_for_file():
+    """Terminal file navigator that lets users select a Python file from the current directory."""
+    current_dir = os.getcwd()
+    while True:
+        try:
+            items = os.listdir(current_dir)
+        except Exception as e:
+            console.print(f"[red]Error reading directory: {e}[/red]")
+            return None
+
+        # Filter to directories and .py files for cleaner navigation
+        choices = [".. (Up One Directory)"]
+        dirs = [f for f in items if os.path.isdir(os.path.join(current_dir, f)) and not f.startswith(".")]
+        pys = [f for f in items if f.endswith(".py")]
+        
+        choices.extend([f"[Dir] {d}" for d in sorted(dirs)])
+        choices.extend(sorted(pys))
+        choices.append("[Cancel Selection]")
+
+        selected = questionary.select(
+            f"Current Dir: {current_dir}\nSelect a file to run:",
+            choices=choices
+        ).ask()
+
+        if selected == "[Cancel Selection]" or selected is None:
+            return None
+        elif selected == ".. (Up One Directory)":
+            current_dir = os.path.dirname(current_dir)
+        elif selected.startswith("[Dir] "):
+            current_dir = os.path.join(current_dir, selected.replace("[Dir] ", ""))
+        else:
+            return os.path.relpath(os.path.join(current_dir, selected))
 
 def main():
-    console.print("\n[bold magenta]◆ WIZ: UV MANAGER[/bold magenta]\n" + "─" * 40)
+    console.print("\n[bold magenta]◆ WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "─" * 40)
     while True:
         choice = questionary.select(
             "Select action:",
@@ -26,7 +63,7 @@ def main():
                 "1. Initialize Virtual Env (uv venv)",
                 "2. Install Package (uv pip install)",
                 "3. Install Python Version (uv python install)",
-                "4. Run Script Safely (uv run)",
+                "4. Run Script via Navigator (uv run)",
                 "5. List Python Versions (uv python list)",
                 "Exit"
             ]
@@ -34,20 +71,38 @@ def main():
 
         if choice == "Exit" or choice is None:
             break
+            
         elif "1." in choice:
-            ver = questionary.text("Python version (optional):").ask()
-            run_uv(["venv", "--python", ver] if ver else ["venv"])
+            path = questionary.text("Target directory path (Press enter for default '.venv'):").ask()
+            ver = questionary.text("Python version (optional, e.g. 3.12):").ask()
+            
+            args = ["venv"]
+            if path.strip(): args.append(path.strip())
+            if ver.strip(): args.extend(["--python", ver.strip()])
+            
+            if run_uv(args):
+                # Print explicit shell instructions to easily activate the environment
+                target_env = path.strip() if path.strip() else ".venv"
+                console.print(f"\n[bold cyan]💡 To activate this environment in PowerShell run:[/bold cyan]")
+                console.print(f"[yellow].\\{target_env}\\Scripts\\activate[/yellow]")
+
         elif "2." in choice:
             pkg = questionary.text("Package name:").ask()
             if pkg: run_uv(["pip", "install"] + pkg.split())
+            
         elif "3." in choice:
             ver = questionary.text("Python version (e.g. 3.12):").ask()
             if ver: run_uv(["python", "install", ver])
+            
         elif "4." in choice:
-            scr = questionary.text("Script path (e.g. main.py):").ask()
-            if scr: run_uv(["run", scr])
+            scr = browse_for_file()
+            if scr: 
+                console.print(f"[green]Executing selected file: {scr}[/green]")
+                run_uv(["run", scr])
+                
         elif "5." in choice:
             run_uv(["python", "list"])
+            
         console.print("─" * 40)
 
 if __name__ == "__main__":
