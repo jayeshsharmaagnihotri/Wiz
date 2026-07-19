@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import questionary
 from rich.console import Console
@@ -8,17 +9,20 @@ console = Console()
 def run_uv(args):
     try:
         cmd = ["uv"] + args
+        # When executing a python script locally, run it with the current python interpreter directly
+        # to ensure it retains access to the active console screen buffer.
+        if len(args) >= 2 and args[0] == "run" and args[1].endswith(".py"):
+            target_script = args[1]
+            cmd = [sys.executable, "-m", "wiz.cli", "--direct"] if "__main__.py" in target_script or "cli.py" in target_script else [sys.executable, target_script]
+        
         with console.status(f"[bold yellow]Wiz running: {' '.join(cmd)}...[/bold yellow]"):
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        console.print("\n[bold green]✓ Success[/bold green]")
-        if result.stdout:
-            console.print(result.stdout.strip())
+            result = subprocess.run(cmd, check=True)
         return True
     except FileNotFoundError:
-        console.print("\n[bold red]✗ Error: 'uv' not found in PATH.[/bold red]")
+        console.print("\n[bold red]✗ Error: Process execution failed. Component not found.[/bold red]")
         return False
     except subprocess.CalledProcessError as e:
-        console.print(f"\n[bold red]✗ Failed ({e.returncode})[/bold red]\n[red]{e.stderr.strip()}[/red]")
+        console.print(f"\n[bold red]✗ Failed ({e.returncode})[/bold red]")
         return False
 
 def browse_for_file():
@@ -53,6 +57,10 @@ def browse_for_file():
             return os.path.relpath(os.path.join(current_dir, selected))
 
 def main():
+    if "--direct" in sys.argv:
+        # Avoid recursion loops if running the script itself direct
+        console.print("[bold yellow]Running Wiz internal module directly...[/bold yellow]")
+    
     console.print("\n[bold magenta]* WIZ: ADVANCED UV DRIVER[/bold magenta]\n" + "-" * 40)
     while True:
         choice = questionary.select(
