@@ -1,4 +1,4 @@
-@'
+
 # 🪄 Wiz: Interactive TUI & Automation Engine for Python Environments
 
 Wiz is a Python environment and package management tool built on top of `uv` and `pip`. It runs as an interactive TUI wizard when launched with no arguments, and as a set of scriptable, non-interactive subcommands when used in scripts, Makefiles, or CI.
