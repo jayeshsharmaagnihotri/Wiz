@@ -7,11 +7,24 @@ class TestWizCLI(unittest.TestCase):
     def setUp(self):
         self.parser = build_parser()
 
+    @patch("wiz.cli.init_quality_configs")
     @patch("wiz.cli.init_project_config")
-    def test_init_command(self, mock_init):
-        args = self.parser.parse_args(["init", "--path", "."])
+    def test_init_command_with_quality(self, mock_init, mock_quality):
+        args = self.parser.parse_args(["init", "--path", ".", "--quality"])
         handle_cli_args(args)
         mock_init.assert_called_once_with(".")
+        mock_quality.assert_called_once_with(".")
+
+    @patch("wiz.cli.run_quality_pipeline")
+    def test_quality_command(self, mock_quality_pipeline):
+        args = self.parser.parse_args(["quality", "--fix", "--strict"])
+        handle_cli_args(args)
+        mock_quality_pipeline.assert_called_once_with(
+            target_dir=".",
+            fix=True,
+            types_only=False,
+            strict=True
+        )
 
     @patch("wiz.cli.load_config", return_value={"default_engine": "uv"})
     @patch("wiz.cli.run_cmd")

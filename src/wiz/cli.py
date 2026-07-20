@@ -10,6 +10,7 @@ from wiz.utils import (
     load_history, save_history, load_config, save_config,
     validate_package, run_pip_with_progress, init_project_config
 )
+from wiz.quality import init_quality_configs, run_quality_pipeline
 
 def run_cmd(cmd, use_status=True, status_msg="Running...", is_script=False):
     """Unified runner supporting both raw pip and uv commands cleanly"""
@@ -83,7 +84,18 @@ def handle_cli_args(args):
     default_engine = config.get("default_engine", "uv")
 
     if args.command == "init":
-        return init_project_config(args.path)
+        res = init_project_config(args.path)
+        if args.quality:
+            init_quality_configs(args.path)
+        return res
+
+    elif args.command == "quality":
+        return run_quality_pipeline(
+            target_dir=args.path,
+            fix=args.fix,
+            types_only=args.types_only,
+            strict=args.strict
+        )
 
     elif args.command == "venv":
         path = args.path or ".venv"
@@ -116,7 +128,8 @@ def interactive_loop():
         choice = questionary.select(
             "Select action category:",
             choices=[
-                "[Init] Create Production pyproject.toml",
+                "[Init] Create Production pyproject.toml & Quality Configs",
+                "[Quality] Run Quality Suite (Ruff -> Type Analysis -> AST)",
                 "[UV] Initialize Virtual Env (uv venv)",
                 "[UV] Run Script via Navigator (uv run)",
                 "[UV] Re-run Recent Script (History)",
@@ -135,6 +148,14 @@ def interactive_loop():
 
         elif "Create Production pyproject.toml" in choice:
             init_project_config(".")
+            add_q = questionary.confirm("Include Python Quality Platform configs (Ruff, Pyright, Pre-Commit)?", default=True, style=theme).ask()
+            if add_q:
+                init_quality_configs(".")
+
+        elif "Run Quality Suite" in choice:
+            fix_opt = questionary.confirm("Apply automatic safe fixes using Ruff?", default=False, style=theme).ask()
+            strict_opt = questionary.confirm("Enable deep static analysis (Pylint)?", default=False, style=theme).ask()
+            run_quality_pipeline(".", fix=fix_opt, strict=strict_opt)
 
         elif "Initialize Virtual Env" in choice:
             path = questionary.text("Target env directory path (Press enter for '.venv'):", style=theme).ask()
@@ -285,7 +306,9 @@ def build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""examples:
   wiz                                Launch interactive TUI wizard
-  wiz init                           Create PEP 621 compliant pyproject.toml
+  wiz init --quality                 Create pyproject.toml and quality platform configs
+  wiz quality                        Run complete quality pipeline (Ruff, Pyright, AST)
+  wiz quality --fix                  Run quality pipeline with safe auto-fixes
   wiz venv --path .venv --python 3.12 Create virtual environment
   wiz install requests --engine uv    Install packages using uv engine
   wiz run main.py -- --debug          Run script with custom arguments
@@ -296,6 +319,14 @@ def build_parser():
     # wiz init
     init_parser = subparsers.add_parser("init", help="Generate production-grade pyproject.toml configuration")
     init_parser.add_argument("--path", help="Target project path (default: .)", default=".")
+    init_parser.add_argument("--quality", action="store_true", help="Generate quality configs (ruff, pyright, pre-commit)")
+
+    # wiz quality
+    quality_parser = subparsers.add_parser("quality", help="Run Python Quality Platform pipeline")
+    quality_parser.add_argument("--path", help="Target project path (default: .)", default=".")
+    quality_parser.add_argument("--fix", action="store_true", help="Apply safe auto-fixes using Ruff")
+    quality_parser.add_argument("--types-only", action="store_true", help="Run type analysis phase only")
+    quality_parser.add_argument("--strict", action="store_true", help="Include deep static analysis (Pylint)")
 
     # wiz venv
     venv_parser = subparsers.add_parser("venv", help="Create a virtual environment with optional Python version")
