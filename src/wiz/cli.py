@@ -87,7 +87,7 @@ def handle_cli_args(args):
         cmd = ["uv", "venv", path]
         if args.python:
             cmd.extend(["--python", args.python])
-        run_cmd(cmd, status_msg="Configuring virtual environment")
+        return run_cmd(cmd, status_msg="Configuring virtual environment")
 
     elif args.command == "install":
         valid_pkgs = [p for p in args.packages if validate_package(p)]
@@ -95,14 +95,14 @@ def handle_cli_args(args):
             sys.exit(1)
         engine = args.engine or default_engine
         base_cmd = ["uv", "pip", "install"] if engine == "uv" else ["pip", "install"]
-        run_pip_with_progress(base_cmd + valid_pkgs, target_action="install", engine_name=engine)
+        return run_pip_with_progress(base_cmd + valid_pkgs, target_action="install", engine_name=engine)
 
     elif args.command == "run":
         cmd = ["uv", "run", args.script] + args.flags
-        run_cmd(cmd, use_status=False, is_script=True)
+        return run_cmd(cmd, use_status=False, is_script=True)
 
     elif args.command == "list":
-        run_cmd(["uv", "python", "list"], status_msg="Gathering engine runtimes")
+        return run_cmd(["uv", "python", "list"], status_msg="Gathering engine runtimes")
 
 def interactive_loop():
     """Runs the interactive TUI wizard"""
@@ -270,28 +270,43 @@ def interactive_loop():
 
         console.print("-" * 55)
 
-def main():
-    parser = argparse.ArgumentParser(description="Wiz: Unified Environment & Runner Engine")
-    subparsers = parser.add_subparsers(dest="command", help="Subcommands for non-interactive automation")
+def build_parser():
+    """Builds and returns the argparse Parser instance"""
+    parser = argparse.ArgumentParser(
+        prog="wiz",
+        description="Wiz: Interactive TUI & Non-Interactive Automation Engine for Python Environments",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""examples:
+  wiz                                Launch interactive TUI wizard
+  wiz venv --path .venv --python 3.12 Create virtual environment
+  wiz install requests --engine uv    Install packages using uv engine
+  wiz run main.py -- --debug          Run script with custom arguments
+  wiz list                           List installed Python versions"""
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available automation subcommands")
 
     # wiz venv
-    venv_parser = subparsers.add_parser("venv", help="Create a virtual environment")
-    venv_parser.add_argument("--path", help="Target path (default: .venv)", default=".venv")
-    venv_parser.add_argument("--python", help="Python version (e.g., 3.12)")
+    venv_parser = subparsers.add_parser("venv", help="Create a virtual environment with optional Python version")
+    venv_parser.add_argument("--path", help="Target virtual environment directory (default: .venv)", default=".venv")
+    venv_parser.add_argument("--python", help="Python version tag (e.g., 3.12)")
 
     # wiz install <packages...>
-    install_parser = subparsers.add_parser("install", help="Install packages")
-    install_parser.add_argument("packages", nargs="+", help="Package names to install")
-    install_parser.add_argument("--engine", choices=["uv", "pip"], help="Override default engine")
+    install_parser = subparsers.add_parser("install", help="Install packages with validation and engine selection")
+    install_parser.add_argument("packages", nargs="+", help="Package name(s) to install")
+    install_parser.add_argument("--engine", choices=["uv", "pip"], help="Override default package management engine")
 
     # wiz run <script> [flags...]
-    run_parser = subparsers.add_parser("run", help="Run a Python script via uv")
-    run_parser.add_argument("script", help="Script file path")
-    run_parser.add_argument("flags", nargs=argparse.REMAINDER, help="Flags to pass to script")
+    run_parser = subparsers.add_parser("run", help="Run a Python script via uv runner")
+    run_parser.add_argument("script", help="Path to Python script file")
+    run_parser.add_argument("flags", nargs=argparse.REMAINDER, help="Optional arguments forwarded to script")
 
     # wiz list
-    subparsers.add_parser("list", help="List installed Python versions")
+    subparsers.add_parser("list", help="List Python runtimes available on system")
 
+    return parser
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.command:
