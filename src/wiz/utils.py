@@ -79,23 +79,25 @@ def validate_package(package_name):
         return False
     return True
 
-def run_pip_with_progress(args, target_action="install"):
+def run_pip_with_progress(args, target_action="install", engine_name="uv"):
     full_cmd = args
-    with console.status("[#8B949E]│[/#8B949E] [bold #C9D1D9]Connecting to index servers...[/bold #C9D1D9]", spinner="simpleDotsScrolling"):
-        time.sleep(0.3)
+    engine_label = "Fast Engine (uv)" if engine_name == "uv" else "Standard Engine (pip)"
+    
+    with console.status(f"[#8B949E]│[/#8B949E] [bold #C9D1D9][{engine_label}] Resolving index & dependencies...[/bold #C9D1D9]", spinner="simpleDotsScrolling"):
+        time.sleep(0.2)
 
-    with console.status(f"[#8B949E]│[/#8B949E] [bold #C9D1D9]Executing {target_action}...[/bold #C9D1D9]", spinner="simpleDotsScrolling"):
+    with console.status(f"[#8B949E]│[/#8B949E] [bold #C9D1D9][{engine_label}] Executing {target_action}...[/bold #C9D1D9]", spinner="simpleDotsScrolling"):
         result = subprocess.run(full_cmd, capture_output=True, text=True)
 
     if result.returncode == 0:
-        print_line(f"[bold #3FB950]STATUS: SUCCESS[/bold #3FB950] - Finished {target_action} routine.")
+        print_line(f"[bold #3FB950]STATUS: SUCCESS[/bold #3FB950] - Finished {target_action} using {engine_label}.")
         if result.stdout.strip():
             for line in result.stdout.strip().split('\n'):
                 if not line.lower().startswith("notice:"):
                     print_line(f"[#8B949E]{line}[/#8B949E]")
         return True
     else:
-        print_line("[bold #F85149]STATUS: FAILED[/bold #F85149]")
+        print_line(f"[bold #F85149]STATUS: FAILED ({engine_label})[/bold #F85149]")
         for line in result.stderr.strip().split('\n'):
             print_line(f"[#F85149]{line}[/#F85149]")
         return False

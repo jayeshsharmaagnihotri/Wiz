@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import subprocess
 from pathlib import Path
 import questionary
@@ -76,7 +77,35 @@ def browse_for_file(extension=".py", prompt_text="Select a file:"):
             except ValueError:
                 return str(selected_file)
 
-def main():
+def handle_cli_args(args):
+    """Handles non-interactive scriptable CLI commands"""
+    config = load_config()
+    default_engine = config.get("default_engine", "uv")
+
+    if args.command == "venv":
+        path = args.path or ".venv"
+        cmd = ["uv", "venv", path]
+        if args.python:
+            cmd.extend(["--python", args.python])
+        run_cmd(cmd, status_msg="Configuring virtual environment")
+
+    elif args.command == "install":
+        valid_pkgs = [p for p in args.packages if validate_package(p)]
+        if not valid_pkgs:
+            sys.exit(1)
+        engine = args.engine or default_engine
+        base_cmd = ["uv", "pip", "install"] if engine == "uv" else ["pip", "install"]
+        run_pip_with_progress(base_cmd + valid_pkgs, target_action="install", engine_name=engine)
+
+    elif args.command == "run":
+        cmd = ["uv", "run", args.script] + args.flags
+        run_cmd(cmd, use_status=False, is_script=True)
+
+    elif args.command == "list":
+        run_cmd(["uv", "python", "list"], status_msg="Gathering engine runtimes")
+
+def interactive_loop():
+    """Runs the interactive TUI wizard"""
     config = load_config()
 
     while True:
@@ -159,26 +188,28 @@ def main():
                 if not valid_packages:
                     continue
 
-                engine = questionary.select(
+                engine_choice = questionary.select(
                     "Choose engine tool:",
                     choices=["1. Fast Mode (uv pip install)", "2. Standard Mode (pip install)"],
                     style=theme
                 ).ask()
                 
-                base_cmd = ["uv", "pip", "install"] if "Fast Mode" in engine else ["pip", "install"]
-                run_pip_with_progress(base_cmd + valid_packages, target_action="install")
+                engine_name = "uv" if "Fast Mode" in engine_choice else "pip"
+                base_cmd = ["uv", "pip", "install"] if engine_name == "uv" else ["pip", "install"]
+                run_pip_with_progress(base_cmd + valid_packages, target_action="install", engine_name=engine_name)
             
         elif "Install from requirements.txt" in choice:
             req_file = browse_for_file(extension=".txt", prompt_text="Select your requirements file:")
             if req_file:
-                engine = questionary.select(
+                engine_choice = questionary.select(
                     "Choose engine tool:",
                     choices=["1. Fast Mode (uv pip install -r)", "2. Standard Mode (pip install -r)"],
                     style=theme
                 ).ask()
                 
-                base_cmd = ["uv", "pip", "install", "-r", req_file] if "Fast Mode" in engine else ["pip", "install", "-r", req_file]
-                run_pip_with_progress(base_cmd, target_action="requirements installation")
+                engine_name = "uv" if "Fast Mode" in engine_choice else "pip"
+                base_cmd = ["uv", "pip", "install", "-r", req_file] if engine_name == "uv" else ["pip", "install", "-r", req_file]
+                run_pip_with_progress(base_cmd, target_action="requirements installation", engine_name=engine_name)
 
         elif "Freeze Environment Requirements" in choice:
             engine = questionary.select(
@@ -230,6 +261,35 @@ def main():
                 console.print("[bold green]Settings updated successfully![/bold green]")
 
         console.print("-" * 55)
+
+def main():
+    parser = argparse.ArgumentParser(description="Wiz: Unified Environment & Runner Engine")
+    subparsers = parser.add_subparsers(dest="command", help="Subcommands for non-interactive automation")
+
+    # wiz venv
+    venv_parser = subparsers.add_parser("venv", help="Create a virtual environment")
+    venv_parser.add_argument("--path", help="Target path (default: .venv)", default=".venv")
+    venv_parser.add_argument("--python", help="Python version (e.g., 3.12)")
+
+    # wiz install <packages...>
+    install_parser = subparsers.add_parser("install", help="Install packages")
+    install_parser.add_argument("packages", nargs="+", help="Package names to install")
+    install_parser.add_argument("--engine", choices=["uv", "pip"], help="Override default engine")
+
+    # wiz run <script> [flags...]
+    run_parser = subparsers.add_parser("run", help="Run a Python script via uv")
+    run_parser.add_argument("script", help="Script file path")
+    run_parser.add_argument("flags", nargs=argparse.REMAINDER, help="Flags to pass to script")
+
+    # wiz list
+    subparsers.add_parser("list", help="List installed Python versions")
+
+    args, unknown = parser.parse_known_args()
+
+    if args.command:
+        handle_cli_args(args)
+    else:
+        interactive_loop()
 
 if __name__ == "__main__":
     main()
