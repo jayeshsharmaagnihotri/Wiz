@@ -8,7 +8,7 @@ import questionary
 from wiz.styles import console, theme, print_line
 from wiz.utils import (
     load_history, save_history, load_config, save_config,
-    validate_package, run_pip_with_progress
+    validate_package, run_pip_with_progress, init_project_config
 )
 
 def run_cmd(cmd, use_status=True, status_msg="Running...", is_script=False):
@@ -82,7 +82,10 @@ def handle_cli_args(args):
     config = load_config()
     default_engine = config.get("default_engine", "uv")
 
-    if args.command == "venv":
+    if args.command == "init":
+        return init_project_config(args.path)
+
+    elif args.command == "venv":
         path = args.path or ".venv"
         cmd = ["uv", "venv", path]
         if args.python:
@@ -113,6 +116,7 @@ def interactive_loop():
         choice = questionary.select(
             "Select action category:",
             choices=[
+                "[Init] Create Production pyproject.toml",
                 "[UV] Initialize Virtual Env (uv venv)",
                 "[UV] Run Script via Navigator (uv run)",
                 "[UV] Re-run Recent Script (History)",
@@ -128,7 +132,10 @@ def interactive_loop():
 
         if choice == "Exit" or choice is None:
             break
-            
+
+        elif "Create Production pyproject.toml" in choice:
+            init_project_config(".")
+
         elif "Initialize Virtual Env" in choice:
             path = questionary.text("Target env directory path (Press enter for '.venv'):", style=theme).ask()
             ver = questionary.text("Python version (optional, e.g. 3.12):", style=theme).ask()
@@ -278,12 +285,17 @@ def build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""examples:
   wiz                                Launch interactive TUI wizard
+  wiz init                           Create PEP 621 compliant pyproject.toml
   wiz venv --path .venv --python 3.12 Create virtual environment
   wiz install requests --engine uv    Install packages using uv engine
   wiz run main.py -- --debug          Run script with custom arguments
   wiz list                           List installed Python versions"""
     )
     subparsers = parser.add_subparsers(dest="command", help="Available automation subcommands")
+
+    # wiz init
+    init_parser = subparsers.add_parser("init", help="Generate production-grade pyproject.toml configuration")
+    init_parser.add_argument("--path", help="Target project path (default: .)", default=".")
 
     # wiz venv
     venv_parser = subparsers.add_parser("venv", help="Create a virtual environment with optional Python version")

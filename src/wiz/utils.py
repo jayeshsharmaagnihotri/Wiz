@@ -1,47 +1,45 @@
 import os
 import sys
 import json
+import re
 import subprocess
-import time
 from pathlib import Path
-from wiz.styles import console, print_line
 
+# Paths
 CONFIG_DIR = Path.home() / ".wiz"
 CONFIG_FILE = CONFIG_DIR / "wiz.json"
 HISTORY_FILE = CONFIG_DIR / "wiz_history"
 
-BUILTIN_MODULES = set(sys.builtin_module_names) | {
-    "time", "os", "sys", "math", "random", "json", "re", "datetime",
-    "collections", "itertools", "functools", "pathlib", "shutil", "ssl",
-    "urllib", "subprocess", "csv", "hashlib", "logging", "pickle"
+BUILTIN_MODULES = sys.builtin_module_names
+
+DEFAULT_CONFIG = {
+    "default_engine": "uv",
+    "max_history": 5,
+    "theme_color": "cyan"
 }
 
 def ensure_config_dir():
+    """Ensures ~/.wiz directory exists"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_config():
     ensure_config_dir()
-    default_config = {
-        "default_engine": "uv",
-        "max_history": 5,
-        "theme_color": "cyan"
-    }
     if not CONFIG_FILE.exists():
-        save_config(default_config)
-        return default_config
+        save_config(DEFAULT_CONFIG)
+        return DEFAULT_CONFIG.copy()
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return {**default_config, **json.load(f)}
+            data = json.load(f)
+            config = DEFAULT_CONFIG.copy()
+            config.update(data)
+            return config
     except Exception:
-        return default_config
+        return DEFAULT_CONFIG.copy()
 
-def save_config(config_data):
+def save_config(config):
     ensure_config_dir()
-    try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=4)
-    except Exception as e:
-        console.print(f"[red]Warning: Could not save configuration: {e}[/red]")
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4)
 
 def load_history():
     ensure_config_dir()
@@ -49,55 +47,132 @@ def load_history():
         return []
     try:
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
+            return [line.strip() for line in f.readlines() if line.strip()]
     except Exception:
         return []
 
-def save_history(script_path, flags):
+def save_history(script, flags=""):
     ensure_config_dir()
     config = load_config()
-    max_history = config.get("max_history", 5)
-    try:
-        entry = f"{script_path} {flags}".strip() if flags else script_path
-        history = load_history()
-        if entry in history:
-            history.remove(entry)
-        history.insert(0, entry)
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            for item in history[:max_history]:
-                f.write(f"{item}\n")
-    except Exception as e:
-        console.print(f"[red]Warning: Could not save run history: {e}[/red]")
+    max_h = config.get("max_history", 5)
+    
+    entry = f"{script} {flags}".strip()
+    history = load_history()
+    
+    if entry in history:
+        history.remove(entry)
+    history.insert(0, entry)
+    
+    history = history[:max_h]
+    
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        for item in history:
+            f.write(f"{item}\n")
 
 def validate_package(package_name):
-    if not package_name:
-        return False
-    pkg_clean = package_name.strip().split("==")[0].split(">=")[0].split("<=")[0]
-    if pkg_clean.lower() in BUILTIN_MODULES:
-        print_line("[bold #F85149]STATUS: FAILED[/bold #F85149]")
-        print_line(f"[#F85149]Error: '{pkg_clean}' is a built-in Python standard library module.[/#F85149]")
+    clean_name = re.split(r'[<>=!~;]', package_name)[0].strip()
+    if clean_name.lower() in BUILTIN_MODULES:
+        print(f"Error: '{clean_name}' is a standard Python module.")
         return False
     return True
 
-def run_pip_with_progress(args, target_action="install", engine_name="uv"):
-    full_cmd = args
-    engine_label = "Fast Engine (uv)" if engine_name == "uv" else "Standard Engine (pip)"
+def run_pip_with_progress(cmd, target_action="action", engine_name="uv"):
+    from wiz.styles import console
     
-    with console.status(f"[#8B949E]│[/#8B949E] [bold #C9D1D9][{engine_label}] Resolving index & dependencies...[/bold #C9D1D9]", spinner="simpleDotsScrolling"):
-        time.sleep(0.2)
+    status_label = f"Executing {target_action} via {engine_name.upper()}..."
+    try:
+        with console.status(f"[bold yellow]{status_label}[/bold yellow]"):
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+        if result.returncode == 0:
+            console.print(f"\n[bold green]Success: {target_action} completed via [{engine_name.upper()}] engine![/bold green]")
+            return True
+        else:
+            console.print(f"\n[bold red]Error during {target_action} ({engine_name.upper()}):[/bold red]")
+            console.print(f"[red]{result.stderr.strip()}[/red]")
+            return False
+    except Exception as e:
+        console.print(f"\n[bold red]Failed to run execution command: {e}[/bold red]")
+        return False
 
-    with console.status(f"[#8B949E]│[/#8B949E] [bold #C9D1D9][{engine_label}] Executing {target_action}...[/bold #C9D1D9]", spinner="simpleDotsScrolling"):
-        result = subprocess.run(full_cmd, capture_output=True, text=True)
+def get_git_user_info():
+    """Detects author name and email from git config if available"""
+    name, email = "Developer", "developer@example.com"
+    try:
+        n = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True)
+        if n.returncode == 0 and n.stdout.strip():
+            name = n.stdout.strip()
+        e = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True)
+        if e.returncode == 0 and e.stdout.strip():
+            email = e.stdout.strip()
+    except Exception:
+        pass
+    return name, email
 
-    if result.returncode == 0:
-        print_line(f"[bold #3FB950]STATUS: SUCCESS[/bold #3FB950] - Finished {target_action} using {engine_label}.")
-        if result.stdout.strip():
-            for line in result.stdout.strip().split('\n'):
-                if not line.lower().startswith("notice:"):
-                    print_line(f"[#8B949E]{line}[/#8B949E]")
+def init_project_config(target_dir="."):
+    """Generates a PEP 621 & PEP 518 compliant pyproject.toml instantly"""
+    from wiz.styles import console
+
+    target_path = Path(target_dir).resolve()
+    pyproject_file = target_path / "pyproject.toml"
+
+    if pyproject_file.exists():
+        console.print(f"[bold yellow]Notice: 'pyproject.toml' already exists in {target_path}. Skipping creation.[/bold yellow]")
+        return False
+
+    project_name = target_path.name.lower().replace(" ", "-").replace("_", "-")
+    author_name, author_email = get_git_user_info()
+    has_src = (target_path / "src").is_dir()
+
+    toml_content = f'''[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{project_name}"
+version = "0.1.0"
+description = "A production-grade Python package"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {{ text = "MIT" }}
+authors = [
+    {{ name = "{author_name}", email = "{author_email}" }}
+]
+keywords = ["python", "utility"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "build>=1.0.0",
+]
+
+[project.scripts]
+# {project_name} = "{project_name.replace('-', '_')}.cli:main"
+'''
+
+    if has_src:
+        toml_content += '''
+[tool.setuptools.packages.find]
+where = ["src"]
+'''
+
+    try:
+        with open(pyproject_file, "w", encoding="utf-8") as f:
+            f.write(toml_content.strip() + "\n")
+        console.print(f"[bold green]Success: Created PEP 621 compliant pyproject.toml in {target_path}[/bold green]")
         return True
-    else:
-        print_line(f"[bold #F85149]STATUS: FAILED ({engine_label})[/bold #F85149]")
-        for line in result.stderr.strip().split('\n'):
-            print_line(f"[#F85149]{line}[/#F85149]")
+    except Exception as e:
+        console.print(f"[bold red]Failed to write pyproject.toml: {e}[/bold red]")
         return False

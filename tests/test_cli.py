@@ -7,6 +7,12 @@ class TestWizCLI(unittest.TestCase):
     def setUp(self):
         self.parser = build_parser()
 
+    @patch("wiz.cli.init_project_config")
+    def test_init_command(self, mock_init):
+        args = self.parser.parse_args(["init", "--path", "."])
+        handle_cli_args(args)
+        mock_init.assert_called_once_with(".")
+
     @patch("wiz.cli.load_config", return_value={"default_engine": "uv"})
     @patch("wiz.cli.run_cmd")
     def test_venv_command(self, mock_run_cmd, mock_load_config):
