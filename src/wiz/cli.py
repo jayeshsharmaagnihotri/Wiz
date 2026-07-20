@@ -188,9 +188,13 @@ def interactive_loop():
                 if not valid_packages:
                     continue
 
+                engine_choices = ["1. Fast Mode (uv pip install)", "2. Standard Mode (pip install)"]
+                default_choice = engine_choices[0] if config.get("default_engine", "uv") == "uv" else engine_choices[1]
+
                 engine_choice = questionary.select(
                     "Choose engine tool:",
-                    choices=["1. Fast Mode (uv pip install)", "2. Standard Mode (pip install)"],
+                    choices=engine_choices,
+                    default=default_choice,
                     style=theme
                 ).ask()
                 
@@ -201,9 +205,13 @@ def interactive_loop():
         elif "Install from requirements.txt" in choice:
             req_file = browse_for_file(extension=".txt", prompt_text="Select your requirements file:")
             if req_file:
+                engine_choices = ["1. Fast Mode (uv pip install -r)", "2. Standard Mode (pip install -r)"]
+                default_choice = engine_choices[0] if config.get("default_engine", "uv") == "uv" else engine_choices[1]
+
                 engine_choice = questionary.select(
                     "Choose engine tool:",
-                    choices=["1. Fast Mode (uv pip install -r)", "2. Standard Mode (pip install -r)"],
+                    choices=engine_choices,
+                    default=default_choice,
                     style=theme
                 ).ask()
                 
@@ -284,7 +292,7 @@ def main():
     # wiz list
     subparsers.add_parser("list", help="List installed Python versions")
 
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     if args.command:
         handle_cli_args(args)
